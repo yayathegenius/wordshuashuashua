@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>词刷刷 Demo</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="phone-shell">
+      <nav class="mode-tabs" aria-label="学习模式">
+        <button id="reviewTab" type="button">复习</button>
+        <button id="learnTab" class="active" type="button">新学</button>
+      </nav>
+
+      <aside class="goal-float" aria-label="目标进度">
+        <div class="cookie">🍪</div>
+        <div>
+          <strong id="cookieCount">0</strong>
+          <span id="roundProgress">0/5</span>
+        </div>
+      </aside>
+
+      <section class="feed" id="feed" aria-live="polite"></section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
