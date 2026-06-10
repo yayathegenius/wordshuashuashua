@@ -1,8 +1,12 @@
-const DEFAULT_SETTINGS = {
-  poolCap: 10,
-  intervals: [2, 4, 7],
-  fallback: 1,
-};
+const GROUP_SIZE = 10;
+
+const LEARN_RECALL_PLAN = [
+  [0, 1],
+  [2, 3, 0, 1],
+  [4, 5, 2, 3],
+  [6, 7, 4, 5, 0, 1],
+  [8, 9, 6, 7, 2, 3, 4, 5, 8, 9, 6, 7, 8, 9],
+];
 
 const WORDS = [
   {
@@ -152,8 +156,8 @@ const state = {
   groupWords: [],
   videoIndex: 0,
   quizIndex: 0,
-  position: 0,
-  schedule: new Map(),
+  quizQueue: [],
+  currentQuizWordIndex: 0,
   spellIndex: 0,
   completed: new Set(),
   skipped: new Set(),
@@ -166,7 +170,6 @@ const state = {
   touchStartX: 0,
   touchStartY: 0,
   touchBound: false,
-  settings: { ...DEFAULT_SETTINGS },
 };
 
 const app = document.querySelector("#app");
@@ -183,8 +186,8 @@ function startLearnGroup(index) {
   state.groupWords = getAvailableWords(WORDS, index);
   state.videoIndex = 0;
   state.quizIndex = 0;
-  state.position = 0;
-  state.schedule = new Map();
+  state.quizQueue = [];
+  state.currentQuizWordIndex = 0;
   state.spellIndex = 0;
   state.completed = new Set();
   state.answerLocked = false;
@@ -193,8 +196,10 @@ function startLearnGroup(index) {
 function startReviewGroup() {
   state.mode = "review";
   state.stage = "quiz";
-  state.groupWords = REVIEW_WORDS.filter((word) => !state.skipped.has(word.text)).slice(0, state.settings.poolCap);
+  state.groupWords = REVIEW_WORDS.filter((word) => !state.skipped.has(word.text)).slice(0, GROUP_SIZE);
   state.quizIndex = 0;
+  state.quizQueue = [];
+  state.currentQuizWordIndex = 0;
   state.spellIndex = 0;
   state.completed = new Set();
   state.answerLocked = false;
@@ -211,19 +216,19 @@ function startSpelling() {
 
 function getAvailableWords(source, groupIndex) {
   const available = source.filter((word) => !state.skipped.has(word.text));
-  const poolCap = state.settings.poolCap;
-  const start = (groupIndex * poolCap) % Math.max(available.length, 1);
-  return [...available.slice(start), ...available.slice(0, start)].slice(0, poolCap);
+  const start = (groupIndex * GROUP_SIZE) % Math.max(available.length, 1);
+  return [...available.slice(start), ...available.slice(0, start)].slice(0, GROUP_SIZE);
 }
 
 function currentWord() {
   if (state.stage === "video") return state.groupWords[state.videoIndex];
   if (state.stage === "spell") return state.groupWords[state.spellIndex];
+  if (state.stage === "quiz" && state.mode === "learn") return state.groupWords[state.currentQuizWordIndex];
   return state.groupWords[state.quizIndex];
 }
 
 function progressCount() {
-  return Math.min(state.settings.poolCap, state.completed.size);
+  return Math.min(GROUP_SIZE, state.completed.size);
 }
 
 function render() {
@@ -256,7 +261,7 @@ function nav(activeMode = state.mode) {
 }
 
 function cookie(progress = progressCount()) {
-  const groupSize = state.settings.poolCap;
+  const groupSize = GROUP_SIZE;
   const deg = Math.round((Math.min(progress, groupSize) / groupSize) * 360);
   return `
     <aside class="cookie-card" aria-label="本组学习进度 ${progress}/${groupSize}">
@@ -381,7 +386,7 @@ function renderWiki(word) {
 
 function renderComplete() {
   const isReview = state.mode === "review";
-  const groupSize = state.settings.poolCap;
+  const groupSize = GROUP_SIZE;
   return `
     <section class="screen complete-screen">
       <div class="reward-panel">
@@ -399,42 +404,19 @@ function renderComplete() {
 }
 
 function renderSettings() {
-  const intervals = state.settings.intervals.join(",");
   return `
     <section class="settings-overlay">
       <button class="settings-scrim" type="button" data-action="close-settings" aria-label="关闭设置"></button>
-      <div class="settings-panel workbench-panel" role="dialog" aria-modal="true" aria-label="参数工作台">
-        <h2>参数工作台</h2>
-        <p class="setting-label">间隔抽背参数</p>
+      <div class="settings-panel workbench-panel" role="dialog" aria-modal="true" aria-label="抽背逻辑">
+        <h2>抽背逻辑</h2>
+        <p class="setting-label">新学固定队列</p>
         <div class="setting-card">
-          <label class="control-row">
-            <div>
-              <strong>工作记忆</strong>
-              <span>每组同时推进的词数</span>
-            </div>
-            <input id="poolCapInput" type="range" min="3" max="12" value="${state.settings.poolCap}" />
-            <output id="poolCapOutput">${state.settings.poolCap}</output>
-          </label>
-          <label class="control-row text-control">
-            <div>
-              <strong>间隔序列</strong>
-              <span>做对后依次延后多少步</span>
-            </div>
-            <input id="intervalInput" type="text" value="${intervals}" inputmode="numeric" />
-          </label>
-          <label class="control-row">
-            <div>
-              <strong>错误回退</strong>
-              <span>做错后回退几个 stage</span>
-            </div>
-            <input id="fallbackInput" type="range" min="0" max="3" value="${state.settings.fallback}" />
-            <output id="fallbackOutput">${state.settings.fallback}</output>
-          </label>
+          ${logicRows()}
         </div>
-        <div class="workbench-summary" id="workbenchSummary">${settingsSummary()}</div>
+        <div class="workbench-summary">错题会追加到当前抽背段末尾，直到做对。完成当前抽背段后，才继续进入下一批新词。</div>
         <div class="workbench-actions">
-          <button type="button" data-action="reset-settings">重置</button>
-          <button class="primary" type="button" data-action="apply-settings">保存并重开本组</button>
+          <button type="button" data-action="close-settings">关闭</button>
+          <button class="primary" type="button" data-action="restart-learn">重开本组</button>
         </div>
         <div class="home-indicator"></div>
       </div>
@@ -471,8 +453,11 @@ function handleAction(action) {
   if (action === "share") return showToast("分享入口先占位，等你定具体设计");
   if (action === "settings" || action === "book") return openSettings();
   if (action === "close-settings") return render();
-  if (action === "apply-settings") return applySettings();
-  if (action === "reset-settings") return resetSettingsForm();
+  if (action === "restart-learn") {
+    startLearnGroup(state.groupIndex);
+    render();
+    return;
+  }
   if (action === "start-spell") return startSpelling();
   if (action === "next-group") return nextGroup();
   if (action === "spell-next" || action === "spell-skip") return nextSpell();
@@ -483,19 +468,15 @@ function handleAction(action) {
 function completeVideo() {
   const word = currentWord();
   if (!word) return;
-  ensureSchedule(word, state.videoIndex);
   state.completed.add(word.text);
-  state.position = state.videoIndex + 1;
-  const dueIndex = findDueIndex(state.position);
-  if (dueIndex >= 0) {
+  const nextIndex = state.videoIndex + 1;
+  const finishedPair = nextIndex % 2 === 0;
+  if (finishedPair) {
+    state.quizQueue = recallQueueForPair(nextIndex / 2);
+    state.currentQuizWordIndex = state.quizQueue.shift();
     state.stage = "quiz";
-    state.quizIndex = dueIndex;
   } else if (state.videoIndex < state.groupWords.length - 1) {
     state.videoIndex += 1;
-  } else if (hasPendingScheduledWords()) {
-    state.position = nextDuePosition();
-    state.stage = "quiz";
-    state.quizIndex = findDueIndex(state.position);
   } else {
     finishGroup();
   }
@@ -520,7 +501,9 @@ function answerQuiz(button, selected) {
   state.answerLocked = true;
   state.quizAttempts.set(word.text, (state.quizAttempts.get(word.text) || 0) + 1);
   const isCorrect = selected === word.option;
-  if (state.mode === "learn") updateWordSchedule(word, isCorrect);
+  if (state.mode === "learn" && !isCorrect) {
+    state.quizQueue.push(state.currentQuizWordIndex);
+  }
   button.classList.add(isCorrect ? "correct" : "wrong");
   app.querySelectorAll(".option-card").forEach((option) => {
     if (option.dataset.option === word.option) option.classList.add("correct");
@@ -537,21 +520,13 @@ function answerQuiz(button, selected) {
       }
       return;
     }
-    const dueIndex = findDueIndex(state.position);
-    if (dueIndex >= 0) {
-      state.stage = "quiz";
-      state.quizIndex = dueIndex;
+    if (state.quizQueue.length) {
+      state.currentQuizWordIndex = state.quizQueue.shift();
       state.answerLocked = false;
       render();
     } else if (state.videoIndex < state.groupWords.length - 1) {
       state.videoIndex += 1;
       state.stage = "video";
-      state.answerLocked = false;
-      render();
-    } else if (hasPendingScheduledWords()) {
-      state.position = nextDuePosition();
-      state.stage = "quiz";
-      state.quizIndex = findDueIndex(state.position);
       state.answerLocked = false;
       render();
     } else {
@@ -571,48 +546,9 @@ function nextSpell() {
   finishGroup(false);
 }
 
-function ensureSchedule(word, position) {
-  if (state.schedule.has(word.text)) return;
-  state.schedule.set(word.text, {
-    stage: 0,
-    due: position + state.settings.intervals[0],
-    done: false,
-  });
-}
-
-function updateWordSchedule(word, isCorrect) {
-  const item = state.schedule.get(word.text);
-  if (!item || item.done) return;
-  if (isCorrect) {
-    item.stage += 1;
-    if (item.stage >= state.settings.intervals.length) {
-      item.done = true;
-      return;
-    }
-    item.due = state.position + state.settings.intervals[item.stage];
-    return;
-  }
-  item.stage = Math.max(0, item.stage - state.settings.fallback);
-  item.due = state.position + state.settings.intervals[item.stage];
-}
-
-function findDueIndex(position) {
-  return state.groupWords
-    .map((word, index) => ({ word, index, item: state.schedule.get(word.text) }))
-    .filter(({ word, item }) => item && !item.done && !state.skipped.has(word.text) && item.due <= position)
-    .sort((a, b) => {
-      if (a.item.due !== b.item.due) return a.item.due - b.item.due;
-      return a.item.stage - b.item.stage;
-    })[0]?.index ?? -1;
-}
-
-function hasPendingScheduledWords() {
-  return [...state.schedule.values()].some((item) => !item.done);
-}
-
-function nextDuePosition() {
-  const dueList = [...state.schedule.values()].filter((item) => !item.done).map((item) => item.due);
-  return dueList.length ? Math.min(...dueList) : state.position;
+function recallQueueForPair(pairNumber) {
+  const plan = LEARN_RECALL_PLAN[pairNumber - 1] || [];
+  return plan.filter((index) => state.groupWords[index] && !state.skipped.has(state.groupWords[index].text));
 }
 
 function finishGroup(addCookie = true) {
@@ -693,66 +629,24 @@ function openSettings() {
   app.querySelectorAll(".settings-overlay [data-action]").forEach((node) => {
     node.addEventListener("click", () => handleAction(node.dataset.action));
   });
-  bindSettingsControls();
 }
 
-function bindSettingsControls() {
-  const poolInput = app.querySelector("#poolCapInput");
-  const fallbackInput = app.querySelector("#fallbackInput");
-  const intervalInput = app.querySelector("#intervalInput");
-  const update = () => {
-    const pool = Number.parseInt(poolInput.value, 10);
-    const fallback = Number.parseInt(fallbackInput.value, 10);
-    app.querySelector("#poolCapOutput").textContent = pool;
-    app.querySelector("#fallbackOutput").textContent = fallback;
-    app.querySelector("#workbenchSummary").textContent = settingsSummary({
-      poolCap: pool,
-      intervals: parseIntervals(intervalInput.value),
-      fallback,
-    });
-  };
-  [poolInput, fallbackInput, intervalInput].forEach((input) => {
-    input.addEventListener("input", update);
-  });
-}
-
-function applySettings() {
-  const poolCap = Number.parseInt(app.querySelector("#poolCapInput")?.value || DEFAULT_SETTINGS.poolCap, 10);
-  const fallback = Number.parseInt(app.querySelector("#fallbackInput")?.value || DEFAULT_SETTINGS.fallback, 10);
-  const intervals = parseIntervals(app.querySelector("#intervalInput")?.value || "");
-  state.settings = {
-    poolCap: clamp(poolCap, 3, 12),
-    intervals,
-    fallback: clamp(fallback, 0, 3),
-  };
-  state.toast = "";
-  if (state.mode === "review") startReviewGroup();
-  else startLearnGroup(state.groupIndex);
-  render();
-}
-
-function resetSettingsForm() {
-  state.settings = { ...DEFAULT_SETTINGS };
-  if (state.mode === "review") startReviewGroup();
-  else startLearnGroup(state.groupIndex);
-  render();
-}
-
-function parseIntervals(value) {
-  const parsed = String(value)
-    .split(",")
-    .map((item) => Number.parseInt(item.trim(), 10))
-    .filter((item) => Number.isFinite(item) && item > 0)
-    .slice(0, 5);
-  return parsed.length ? parsed : [...DEFAULT_SETTINGS.intervals];
-}
-
-function settingsSummary(settings = state.settings) {
-  return `当前：每组 ${settings.poolCap} 个词；答对后按 +${settings.intervals.join("、+")} 步回来；做错回退 ${settings.fallback} 个 stage。`;
-}
-
-function clamp(value, min, max) {
-  return Math.min(max, Math.max(min, value));
+function logicRows() {
+  const rows = [
+    "学1 学2 -> 抽背 1、2",
+    "学3 学4 -> 抽背 3、4、1、2",
+    "学5 学6 -> 抽背 5、6、3、4",
+    "学7 学8 -> 抽背 7、8、5、6、1、2",
+    "学9 学10 -> 抽背 9、10、7、8、3、4、5、6、9、10、7、8、9、10",
+  ];
+  return rows
+    .map((row) => `
+      <div class="logic-row">
+        <strong>${row.split(" -> ")[0]}</strong>
+        <span>${row.split(" -> ")[1]}</span>
+      </div>
+    `)
+    .join("");
 }
 
 function showToast(message) {
