@@ -49,12 +49,75 @@ button {
   overflow: hidden;
   background: #2c2c2c;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
+  touch-action: none;
 }
 
 .screen {
   position: absolute;
   inset: 0;
   overflow: hidden;
+}
+
+.screen-transition {
+  pointer-events: none;
+  will-change: transform, opacity;
+  transition:
+    transform 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 280ms ease;
+}
+
+.out-slide-next,
+.out-slide-previous,
+.out-fade-next {
+  z-index: 3;
+}
+
+.in-slide-next,
+.in-slide-previous,
+.in-fade-next {
+  z-index: 2;
+}
+
+.in-slide-next {
+  transform: translate3d(0, 100%, 0);
+}
+
+.out-slide-next.is-active {
+  transform: translate3d(0, -100%, 0);
+}
+
+.in-slide-previous {
+  transform: translate3d(0, -100%, 0);
+}
+
+.out-slide-previous.is-active {
+  transform: translate3d(0, 100%, 0);
+}
+
+.in-slide-next.is-active,
+.in-slide-previous.is-active {
+  transform: translate3d(0, 0, 0);
+}
+
+.in-fade-next {
+  opacity: 0;
+  transform: translate3d(0, 22%, 0);
+}
+
+.in-fade-next.is-active {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.out-fade-next.is-active {
+  opacity: 0;
+  transform: translate3d(0, -18%, 0) scale(0.985);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen-transition {
+    transition-duration: 1ms;
+  }
 }
 
 .video-screen {

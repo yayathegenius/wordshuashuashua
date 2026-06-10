@@ -217,7 +217,11 @@ const state = {
   toast: "",
   touchStartX: 0,
   touchStartY: 0,
+  pointerStartX: 0,
+  pointerStartY: 0,
+  pointerDown: false,
   touchBound: false,
+  isTransitioning: false,
 };
 
 const app = document.querySelector("#app");
@@ -296,6 +300,34 @@ function render() {
     app.innerHTML = renderVideo(word);
   }
   bindEvents();
+}
+
+function transitionTo(update, direction = "next", effect = "slide") {
+  if (state.isTransitioning) return;
+  const outgoing = app.querySelector(".screen")?.cloneNode(true);
+  state.isTransitioning = true;
+  update();
+  render();
+  const incoming = app.querySelector(".screen");
+  if (!incoming || !outgoing) {
+    state.isTransitioning = false;
+    return;
+  }
+
+  outgoing.classList.add("screen-transition", `out-${effect}-${direction}`);
+  incoming.classList.add("screen-transition", `in-${effect}-${direction}`);
+  app.append(outgoing);
+
+  window.requestAnimationFrame(() => {
+    outgoing.classList.add("is-active");
+    incoming.classList.add("is-active");
+  });
+
+  window.setTimeout(() => {
+    outgoing.remove();
+    incoming.classList.remove("screen-transition", `in-${effect}-${direction}`, "is-active");
+    state.isTransitioning = false;
+  }, 420);
 }
 
 function nav(activeMode = state.mode) {
@@ -460,7 +492,7 @@ function renderSettings() {
         <div class="setting-card">
           ${logicRows()}
         </div>
-        <div class="workbench-summary">错题会追加到当前抽背段末尾，直到做对。完成当前抽背段后，才继续进入下一批新词。</div>
+        <div class="workbench-summary">点错后留在当前题，选过的错误项会标红，直到选到正确答案才进入下一题。</div>
         <div class="workbench-actions">
           <button type="button" data-action="close-settings">关闭</button>
           <button class="primary" type="button" data-action="restart-learn">重开本组</button>
@@ -481,13 +513,11 @@ function bindEvents() {
   app.querySelectorAll("[data-key]").forEach((node) => {
     node.addEventListener("click", () => typeSpellKey(node.dataset.key));
   });
-  app.querySelector(".video-screen")?.addEventListener("click", (event) => {
-    if (event.target.closest("button")) return;
-    completeVideo();
-  });
   if (!state.touchBound) {
     app.addEventListener("touchstart", handleTouchStart, { passive: true });
     app.addEventListener("touchend", handleTouchEnd, { passive: true });
+    app.addEventListener("mousedown", handlePointerStart);
+    app.addEventListener("mouseup", handlePointerEnd);
     state.touchBound = true;
   }
 }
@@ -499,7 +529,7 @@ function handleAction(action) {
     return;
   }
   if (action === "mode-review") return startReviewGroup();
-  if (action === "next-video") return completeVideo();
+  if (action === "next-video") return goNextVideo();
   if (action === "wiki") return openWiki();
   if (action === "wiki-close" || action === "wiki-back") return closeWiki();
   if (action === "like") return toggleLike();
@@ -540,56 +570,78 @@ function completeVideo() {
   render();
 }
 
+function goNextVideo() {
+  transitionTo(() => completeVideoWithoutRender(), "next", "slide");
+}
+
+function completeVideoWithoutRender() {
+  const word = currentWord();
+  if (!word) return;
+  state.completed.add(word.text);
+  const nextIndex = state.videoIndex + 1;
+  const finishedPair = nextIndex % 2 === 0;
+  if (finishedPair) {
+    state.quizQueue = recallQueueForPair(nextIndex / 2);
+    state.currentQuizWordIndex = state.quizQueue.shift();
+    state.stage = "quiz";
+  } else if (state.videoIndex < state.groupWords.length - 1) {
+    state.videoIndex += 1;
+  } else {
+    finishGroupState();
+  }
+}
+
 function previousVideo() {
   if (state.stage !== "video") return;
   if (state.videoIndex > 0) {
-    const word = currentWord();
-    if (word) state.completed.delete(word.text);
-    state.videoIndex -= 1;
-    render();
+    transitionTo(() => {
+      const word = currentWord();
+      if (word) state.completed.delete(word.text);
+      state.videoIndex -= 1;
+    }, "previous", "slide");
     return;
   }
   showToast("已经是本组第一个视频");
 }
 
 function answerQuiz(button, selected) {
-  if (state.answerLocked) return;
+  if (state.answerLocked || button.classList.contains("wrong")) return;
   const word = currentWord();
+  const isCorrect = selected === word.option;
+
+  if (!isCorrect) {
+    button.classList.add("wrong");
+    state.quizAttempts.set(word.text, (state.quizAttempts.get(word.text) || 0) + 1);
+    return;
+  }
+
   state.answerLocked = true;
   state.quizAttempts.set(word.text, (state.quizAttempts.get(word.text) || 0) + 1);
-  const isCorrect = selected === word.option;
-  if (state.mode === "learn" && !isCorrect) {
-    state.quizQueue.push(state.currentQuizWordIndex);
-  }
-  button.classList.add(isCorrect ? "correct" : "wrong");
-  app.querySelectorAll(".option-card").forEach((option) => {
-    if (option.dataset.option === word.option) option.classList.add("correct");
-  });
+  button.classList.add("correct");
   window.setTimeout(() => {
-    if (state.mode === "review") {
-      state.completed.add(word.text);
-      if (state.quizIndex < state.groupWords.length - 1) {
-        state.quizIndex += 1;
-        state.answerLocked = false;
-        render();
-      } else {
-        finishGroup();
+    transitionTo(() => {
+      if (state.mode === "review") {
+        state.completed.add(word.text);
+        if (state.quizIndex < state.groupWords.length - 1) {
+          state.quizIndex += 1;
+          state.answerLocked = false;
+        } else {
+          finishGroupState(false);
+        }
+        return;
       }
-      return;
-    }
-    if (state.quizQueue.length) {
-      state.currentQuizWordIndex = state.quizQueue.shift();
-      state.answerLocked = false;
-      render();
-    } else if (state.videoIndex < state.groupWords.length - 1) {
-      state.videoIndex += 1;
-      state.stage = "video";
-      state.answerLocked = false;
-      render();
-    } else {
-      finishGroup();
-    }
-  }, 720);
+      if (state.quizQueue.length) {
+        state.currentQuizWordIndex = state.quizQueue.shift();
+        state.answerLocked = false;
+      } else if (state.videoIndex < state.groupWords.length - 1) {
+        state.videoIndex += 1;
+        state.stage = "video";
+        state.answerLocked = false;
+      } else {
+        finishGroupState(false);
+      }
+    }, "next", "fade");
+  }, 280);
 }
 
 function nextSpell() {
@@ -647,6 +699,13 @@ function finishGroup(addCookie = true) {
   state.stage = "complete";
   state.answerLocked = false;
   render();
+}
+
+function finishGroupState(addCookie = true) {
+  if (addCookie) state.cookies += 1;
+  state.completed = new Set(state.groupWords.map((word) => word.text));
+  state.stage = "complete";
+  state.answerLocked = false;
 }
 
 function nextGroup() {
@@ -791,6 +850,25 @@ function handleTouchStart(event) {
 function handleTouchEnd(event) {
   const deltaX = event.changedTouches[0].clientX - state.touchStartX;
   const deltaY = state.touchStartY - event.changedTouches[0].clientY;
+  handleSwipe(deltaX, deltaY);
+}
+
+function handlePointerStart(event) {
+  if (event.button !== 0) return;
+  state.pointerDown = true;
+  state.pointerStartX = event.clientX;
+  state.pointerStartY = event.clientY;
+}
+
+function handlePointerEnd(event) {
+  if (!state.pointerDown) return;
+  state.pointerDown = false;
+  const deltaX = event.clientX - state.pointerStartX;
+  const deltaY = state.pointerStartY - event.clientY;
+  handleSwipe(deltaX, deltaY);
+}
+
+function handleSwipe(deltaX, deltaY) {
   if (Math.abs(deltaX) > 56 && Math.abs(deltaX) > Math.abs(deltaY)) {
     if (deltaX < 0) startReviewGroup();
     else {
@@ -799,8 +877,8 @@ function handleTouchEnd(event) {
     }
     return;
   }
-  if (state.stage === "video" && deltaY > 42) previousVideo();
-  if (state.stage === "video" && deltaY < -42) completeVideo();
+  if (state.stage === "video" && deltaY > 42) goNextVideo();
+  if (state.stage === "video" && deltaY < -42) previousVideo();
 }
 
 init();
