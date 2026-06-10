@@ -300,6 +300,7 @@ function render() {
     app.innerHTML = renderVideo(word);
   }
   bindEvents();
+  focusSpellInput();
 }
 
 function transitionTo(update, direction = "next", effect = "slide") {
@@ -407,27 +408,27 @@ function renderSpell(word) {
       ${nav(state.mode)}
       ${cookie()}
       <div class="spell-word">
-        <h1 class="${typed ? "" : "empty"}">${typed || "&nbsp;"}</h1>
+        <input
+          class="spell-input ${typed ? "" : "empty"}"
+          type="text"
+          value="${escapeAttr(typed)}"
+          aria-label="输入单词拼写"
+          autocomplete="off"
+          autocapitalize="none"
+          autocorrect="off"
+          spellcheck="false"
+          inputmode="text"
+          enterkeyhint="done"
+          autofocus
+        />
         <p>${word.option}</p>
       </div>
       <div class="spell-actions">
         <button type="button" data-action="spell-skip">跳过</button>
         <button type="button" data-action="slash">斩</button>
       </div>
-      ${keyboard()}
       <div class="home-indicator"></div>
     </section>
-  `;
-}
-
-function keyboard() {
-  return `
-    <div class="keyboard" aria-hidden="true">
-      <div class="keyboard-row">${"QWERTYUIOP".split("").map((key) => `<button class="key" type="button" data-key="${key.toLowerCase()}">${key}</button>`).join("")}</div>
-      <div class="keyboard-row">${"ASDFGHJKL".split("").map((key) => `<button class="key" type="button" data-key="${key.toLowerCase()}">${key}</button>`).join("")}</div>
-      <div class="keyboard-row"><button class="key gray" type="button" data-action="spell-clear">清</button>${"ZXCVBNM".split("").map((key) => `<button class="key" type="button" data-key="${key.toLowerCase()}">${key}</button>`).join("")}<button class="key gray" type="button" data-action="spell-backspace">⌫</button></div>
-      <div class="keyboard-row"><button class="key gray" type="button" data-action="spell-clear">清空</button><button class="key wide" type="button" data-key=" ">space</button><button class="key gray" type="button" data-action="spell-submit">Go</button></div>
-    </div>
   `;
 }
 
@@ -510,8 +511,12 @@ function bindEvents() {
   app.querySelectorAll("[data-option]").forEach((node) => {
     node.addEventListener("click", () => answerQuiz(node, node.dataset.option));
   });
-  app.querySelectorAll("[data-key]").forEach((node) => {
-    node.addEventListener("click", () => typeSpellKey(node.dataset.key));
+  const spellInput = app.querySelector(".spell-input");
+  spellInput?.addEventListener("input", (event) => {
+    state.spellTyped = event.target.value;
+  });
+  spellInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") submitSpell();
   });
   if (!state.touchBound) {
     app.addEventListener("touchstart", handleTouchStart, { passive: true });
@@ -545,9 +550,6 @@ function handleAction(action) {
   if (action === "start-spell") return startSpelling();
   if (action === "next-group") return nextGroup();
   if (action === "spell-skip") return nextSpell();
-  if (action === "spell-backspace") return backspaceSpell();
-  if (action === "spell-clear") return clearSpell();
-  if (action === "spell-submit") return submitSpell();
   if (action === "speak") return speak(currentWord()?.text || "");
   if (action === "back") return showToast("返回首页入口占位");
 }
@@ -656,36 +658,22 @@ function nextSpell() {
   finishGroup(false);
 }
 
-function typeSpellKey(key) {
-  if (state.stage !== "spell") return;
-  const word = currentWord();
-  if (!word) return;
-  if (state.spellTyped.length >= word.text.length + 4) return;
-  state.spellTyped += key;
-  render();
-}
-
-function backspaceSpell() {
-  if (state.stage !== "spell") return;
-  state.spellTyped = state.spellTyped.slice(0, -1);
-  render();
-}
-
-function clearSpell() {
-  if (state.stage !== "spell") return;
-  state.spellTyped = "";
-  render();
-}
-
 function submitSpell() {
   const word = currentWord();
   if (!word) return;
-  const typed = state.spellTyped.trim().toLowerCase();
+  const typed = (app.querySelector(".spell-input")?.value || state.spellTyped).trim().toLowerCase();
   if (typed === word.text.toLowerCase()) {
     nextSpell();
     return;
   }
   showToast("再检查一下拼写");
+}
+
+function focusSpellInput() {
+  if (state.stage !== "spell") return;
+  window.setTimeout(() => {
+    app.querySelector(".spell-input")?.focus({ preventScroll: true });
+  }, 60);
 }
 
 function recallQueueForPair(pairNumber) {

@@ -19,8 +19,6 @@ body {
 }
 
 body {
-  display: grid;
-  place-items: center;
   margin: 0;
   overflow: hidden;
   background: #1d1e22;
@@ -44,11 +42,10 @@ button {
 
 .phone-shell {
   position: relative;
-  width: min(100vw, 393px);
-  height: min(100dvh, 852px);
+  width: 100vw;
+  height: 100dvh;
   overflow: hidden;
   background: #2c2c2c;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
   touch-action: none;
 }
 
@@ -383,12 +380,12 @@ button {
   top: 254px;
   left: 16px;
   z-index: 3;
-  width: 361px;
+  width: calc(100% - 32px);
   text-align: center;
 }
 
 .quiz-stem h1,
-.spell-word h1 {
+.spell-input {
   margin: 0 0 12px;
   color: var(--ink);
   font-size: 30px;
@@ -437,7 +434,7 @@ button {
   z-index: 3;
   display: grid;
   gap: 0;
-  width: 369px;
+  width: calc(100% - 24px);
 }
 
 .option-card {
@@ -485,17 +482,17 @@ button {
   text-align: center;
 }
 
-.spell-word h1::after {
-  display: inline-block;
-  width: 2px;
-  height: 31px;
-  margin-left: 2px;
-  vertical-align: -5px;
-  background: var(--brand);
-  content: "";
+.spell-input {
+  display: block;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  text-align: center;
+  caret-color: var(--brand);
 }
 
-.spell-word h1.empty {
+.spell-input.empty {
   min-height: 40px;
 }
 
@@ -522,48 +519,6 @@ button {
   height: 48px;
   color: #5a5c63;
   font-size: 15px;
-}
-
-.keyboard {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 2;
-  display: grid;
-  gap: 12px;
-  padding: 9px 3px 80px;
-  background: #cfd4da;
-  color: #0d0e10;
-  font-size: 18px;
-  text-align: center;
-}
-
-.keyboard-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 6px;
-}
-
-.key {
-  display: grid;
-  place-items: center;
-  min-width: 36px;
-  height: 45px;
-  border: 0;
-  border-radius: 5px;
-  background: #fff;
-  color: #0d0e10;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.24);
-}
-
-.key.wide {
-  min-width: 190px;
-}
-
-.key.gray {
-  min-width: 92px;
-  background: #adb4bd;
 }
 
 .wiki-screen {
