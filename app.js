@@ -20,7 +20,7 @@ const WORDS = [
   },
   {
     text: "revolutionary",
-    phonetic: "/ˌrevəˈluːʃəneri/",
+    phonetic: "/ˌrev.əˈluː.ʃən.er.i/",
     meaning: "adj. 革命的；突破性的",
     option: "adj. 革命的；革命性的，突破性的",
     example: "The idea felt revolutionary at the time.",
@@ -120,21 +120,68 @@ const WORDS = [
 ];
 
 const REVIEW_WORDS = [
-  "linger",
-  "kinship",
-  "cameo",
-  "beam",
-  "discover",
-  "defamation",
-  "vibrant",
-  "sensible",
-  "sensual",
-  "sensitivity",
-].map((text, index) => ({
-  text,
-  phonetic: ["/ˈlɪŋ.ɡər/", "/ˈkɪn.ʃɪp/", "/ˈkæmioʊ/", "/biːm/"][index % 4],
-  meaning: ["逗留；缓慢消失", "亲近感；亲属关系", "客串；贝雕", "光束；面露喜色"][index % 4],
-  option: ["v. 逗留；缓慢消失", "n. 亲近感；亲属关系", "n. 客串；浮雕饰品", "n. 光束；梁"][index % 4],
+  {
+    text: "linger",
+    phonetic: "/ˈlɪŋ.ɡər/",
+    meaning: "v. 逗留；缓慢消失",
+    option: "v. 逗留；缓慢消失",
+  },
+  {
+    text: "kinship",
+    phonetic: "/ˈkɪn.ʃɪp/",
+    meaning: "n. 亲近感；亲属关系",
+    option: "n. 亲近感；亲属关系",
+  },
+  {
+    text: "cameo",
+    phonetic: "/ˈkæm.i.oʊ/",
+    meaning: "n. 客串；浮雕饰品",
+    option: "n. 客串；浮雕饰品",
+  },
+  {
+    text: "beam",
+    phonetic: "/biːm/",
+    meaning: "n. 光束；梁；v. 微笑",
+    option: "n. 光束；梁；v. 微笑",
+  },
+  {
+    text: "discover",
+    phonetic: "/dɪˈskʌv.ər/",
+    meaning: "v. 发现；找到",
+    option: "v. 发现；找到",
+  },
+  {
+    text: "defamation",
+    phonetic: "/ˌdef.əˈmeɪ.ʃən/",
+    meaning: "n. 诽谤；中伤",
+    option: "n. 诽谤；中伤",
+  },
+  {
+    text: "vibrant",
+    phonetic: "/ˈvaɪ.brənt/",
+    meaning: "adj. 充满活力的；鲜艳的",
+    option: "adj. 充满活力的；鲜艳的",
+  },
+  {
+    text: "sensible",
+    phonetic: "/ˈsen.sə.bəl/",
+    meaning: "adj. 明智的；合理的",
+    option: "adj. 明智的；合理的",
+  },
+  {
+    text: "sensual",
+    phonetic: "/ˈsen.ʃu.əl/",
+    meaning: "adj. 感官的；肉欲的",
+    option: "adj. 感官的；肉欲的",
+  },
+  {
+    text: "sensitivity",
+    phonetic: "/ˌsen.səˈtɪv.ə.ti/",
+    meaning: "n. 敏感；体贴；灵敏度",
+    option: "n. 敏感；体贴；灵敏度",
+  },
+].map((word, index) => ({
+  ...word,
   example: "The word appears in today's review set.",
   exampleCn: "这个词出现在今天的复习组里。",
   bg: WORDS[index % WORDS.length].bg,
@@ -159,6 +206,7 @@ const state = {
   quizQueue: [],
   currentQuizWordIndex: 0,
   spellIndex: 0,
+  spellTyped: "",
   completed: new Set(),
   skipped: new Set(),
   liked: new Set(),
@@ -189,6 +237,7 @@ function startLearnGroup(index) {
   state.quizQueue = [];
   state.currentQuizWordIndex = 0;
   state.spellIndex = 0;
+  state.spellTyped = "";
   state.completed = new Set();
   state.answerLocked = false;
 }
@@ -201,6 +250,7 @@ function startReviewGroup() {
   state.quizQueue = [];
   state.currentQuizWordIndex = 0;
   state.spellIndex = 0;
+  state.spellTyped = "";
   state.completed = new Set();
   state.answerLocked = false;
   render();
@@ -209,6 +259,7 @@ function startReviewGroup() {
 function startSpelling() {
   state.stage = "spell";
   state.spellIndex = 0;
+  state.spellTyped = "";
   state.completed = new Set();
   state.answerLocked = false;
   render();
@@ -280,7 +331,6 @@ function renderVideo(word) {
       <div class="word-panel">
         <div class="word-row">
           <h1 class="word-title">${word.text}</h1>
-          <span class="word-zhan-inline">斩</span>
         </div>
         <div class="phonetic">${word.phonetic}</div>
         <div class="meaning">${word.meaning}</div>
@@ -291,7 +341,6 @@ function renderVideo(word) {
         <button type="button" data-action="like">${state.liked.has(word.text) ? "♥" : "♡"}</button>
         <button type="button" data-action="share">⇧</button>
       </div>
-      <button class="toast" type="button" data-action="next-video">点击继续 · 上滑回上一个</button>
       <div class="home-indicator"></div>
       ${state.toast ? `<div class="toast">${state.toast}</div>` : ""}
     </section>
@@ -320,19 +369,17 @@ function renderQuiz(word) {
 }
 
 function renderSpell(word) {
-  const typed = word.text.slice(0, Math.min(3, word.text.length));
+  const typed = state.spellTyped;
   return `
     <section class="screen blue-screen">
       ${nav(state.mode)}
       ${cookie()}
       <div class="spell-word">
-        <h1>${typed}</h1>
+        <h1 class="${typed ? "" : "empty"}">${typed || "&nbsp;"}</h1>
         <p>${word.option}</p>
       </div>
       <div class="spell-actions">
         <button type="button" data-action="spell-skip">跳过</button>
-        <button type="button">♧</button>
-        <button type="button" data-action="speak">♬</button>
         <button type="button" data-action="slash">斩</button>
       </div>
       ${keyboard()}
@@ -344,10 +391,10 @@ function renderSpell(word) {
 function keyboard() {
   return `
     <div class="keyboard" aria-hidden="true">
-      <div class="keyboard-row">${"QWERTYUIOP".split("").map((key) => `<span class="key">${key}</span>`).join("")}</div>
-      <div class="keyboard-row">${"ASDFGHJKL".split("").map((key) => `<span class="key">${key}</span>`).join("")}</div>
-      <div class="keyboard-row"><span class="key">⇧</span>${"ZXCVBNM".split("").map((key) => `<span class="key">${key}</span>`).join("")}<span class="key">⌫</span></div>
-      <div class="keyboard-row"><span class="key gray">123</span><span class="key wide">space</span><span class="key gray" data-action="spell-next">Go</span></div>
+      <div class="keyboard-row">${"QWERTYUIOP".split("").map((key) => `<button class="key" type="button" data-key="${key.toLowerCase()}">${key}</button>`).join("")}</div>
+      <div class="keyboard-row">${"ASDFGHJKL".split("").map((key) => `<button class="key" type="button" data-key="${key.toLowerCase()}">${key}</button>`).join("")}</div>
+      <div class="keyboard-row"><button class="key gray" type="button" data-action="spell-clear">清</button>${"ZXCVBNM".split("").map((key) => `<button class="key" type="button" data-key="${key.toLowerCase()}">${key}</button>`).join("")}<button class="key gray" type="button" data-action="spell-backspace">⌫</button></div>
+      <div class="keyboard-row"><button class="key gray" type="button" data-action="spell-clear">清空</button><button class="key wide" type="button" data-key=" ">space</button><button class="key gray" type="button" data-action="spell-submit">Go</button></div>
     </div>
   `;
 }
@@ -431,6 +478,13 @@ function bindEvents() {
   app.querySelectorAll("[data-option]").forEach((node) => {
     node.addEventListener("click", () => answerQuiz(node, node.dataset.option));
   });
+  app.querySelectorAll("[data-key]").forEach((node) => {
+    node.addEventListener("click", () => typeSpellKey(node.dataset.key));
+  });
+  app.querySelector(".video-screen")?.addEventListener("click", (event) => {
+    if (event.target.closest("button")) return;
+    completeVideo();
+  });
   if (!state.touchBound) {
     app.addEventListener("touchstart", handleTouchStart, { passive: true });
     app.addEventListener("touchend", handleTouchEnd, { passive: true });
@@ -460,7 +514,10 @@ function handleAction(action) {
   }
   if (action === "start-spell") return startSpelling();
   if (action === "next-group") return nextGroup();
-  if (action === "spell-next" || action === "spell-skip") return nextSpell();
+  if (action === "spell-skip") return nextSpell();
+  if (action === "spell-backspace") return backspaceSpell();
+  if (action === "spell-clear") return clearSpell();
+  if (action === "spell-submit") return submitSpell();
   if (action === "speak") return speak(currentWord()?.text || "");
   if (action === "back") return showToast("返回首页入口占位");
 }
@@ -538,12 +595,45 @@ function answerQuiz(button, selected) {
 function nextSpell() {
   const word = currentWord();
   if (word) state.completed.add(word.text);
+  state.spellTyped = "";
   if (state.spellIndex < state.groupWords.length - 1) {
     state.spellIndex += 1;
     render();
     return;
   }
   finishGroup(false);
+}
+
+function typeSpellKey(key) {
+  if (state.stage !== "spell") return;
+  const word = currentWord();
+  if (!word) return;
+  if (state.spellTyped.length >= word.text.length + 4) return;
+  state.spellTyped += key;
+  render();
+}
+
+function backspaceSpell() {
+  if (state.stage !== "spell") return;
+  state.spellTyped = state.spellTyped.slice(0, -1);
+  render();
+}
+
+function clearSpell() {
+  if (state.stage !== "spell") return;
+  state.spellTyped = "";
+  render();
+}
+
+function submitSpell() {
+  const word = currentWord();
+  if (!word) return;
+  const typed = state.spellTyped.trim().toLowerCase();
+  if (typed === word.text.toLowerCase()) {
+    nextSpell();
+    return;
+  }
+  showToast("再检查一下拼写");
 }
 
 function recallQueueForPair(pairNumber) {
